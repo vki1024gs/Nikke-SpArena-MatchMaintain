@@ -1,0 +1,93 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}History - Match Maintenance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>版本历史</h1>
+    <p>每次数据变更都记录为 Git 提交，可追溯、可回滚</p>
+</div>
+
+{% if not git_initialized %}
+<div class="alert alert-warning">
+    <p>Git 版本控制未初始化。请运行 <code>mm init</code> 启用版本控制。</p>
+</div>
+{% else %}
+<div id="history-container">
+    <button onclick="loadHistory()" class="btn btn-secondary">刷新历史</button>
+    <div id="history-table"></div>
+</div>
+
+<div id="patch-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <h3 id="patch-title"></h3>
+        <pre id="patch-content" class="diff-block"></pre>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if git_initialized %}
+<script>
+async function loadHistory() {
+    const container = document.getElementById('history-table');
+    container.innerHTML = '<p>加载中...</p>';
+
+    try {
+        const res = await fetch('/api/v1/history?limit=50');
+        const data = await res.json();
+
+        if (data.commits.length === 0) {
+            container.innerHTML = '<p>暂无提交记录</p>';
+            return;
+        }
+
+        let html = '<table class="history-table"><thead><tr>';
+        html += '<th>Commit</th><th>作者</th><th>时间</th><th>说明</th><th></th>';
+        html += '</tr></thead><tbody>';
+
+        for (const c of data.commits) {
+            html += '<tr>';
+            html += `<td><code>${c.short_hash}</code></td>`;
+            html += `<td>${c.author}</td>`;
+            html += `<td>${new Date(c.date).toLocaleString()}</td>`;
+            html += `<td>${c.message}</td>`;
+            html += `<td><button onclick="showPatch('${c.hash}')" class="btn btn-small">查看 diff</button></td>`;
+            html += '</tr>';
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<p style="color: #f66;">加载失败: ${e}</p>`;
+    }
+}
+
+async function showPatch(hash) {
+    const modal = document.getElementById('patch-modal');
+    const title = document.getElementById('patch-title');
+    const content = document.getElementById('patch-content');
+
+    title.textContent = `Commit ${hash}`;
+    content.textContent = '加载中...';
+    modal.style.display = 'block';
+
+    try {
+        const res = await fetch(`/api/v1/history/${hash}`);
+        const data = await res.json();
+        content.textContent = data.patch || '无 diff';
+    } catch (e) {
+        content.textContent = `加载失败: ${e}`;
+    }
+}
+
+function closeModal() {
+    document.getElementById('patch-modal').style.display = 'none';
+}
+
+document.addEventListener('DOMContentLoaded', loadHistory);
+</script>
+{% endif %}
+{% endblock %}

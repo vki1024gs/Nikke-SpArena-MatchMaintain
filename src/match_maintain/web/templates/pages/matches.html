@@ -1,0 +1,567 @@
+{% extends "layouts/base.html" %}
+{% block title %}对局列表 - Match Maintenance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>对局列表</h1>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <p class="page-subtitle" style="margin:0">共 {{ data.total }} 条 · 第 {{ data.page }}/{{ data.total_pages }} 页</p>
+        <div style="display:flex;align-items:center;gap:0.75rem">
+            <button id="tag-mgr-trigger" class="btn btn-secondary" style="display:none;padding:0.3rem 0.8rem;font-size:0.85rem" onclick="openTagManager()">标签管理</button>
+            <label class="toggle-switch">
+                <input type="checkbox" id="mode-toggle">
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">编辑模式</span>
+            </label>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>防守方</th>
+                <th>进攻方</th>
+                <th>结果</th>
+                <th>来源</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in data.matches %}
+            <tr class="match-row" data-id="{{ m.id }}" style="cursor:pointer">
+                <td><code>{{ m.id }}</code></td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.defender_team | join(', ') }}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.attacker_team | join(', ') }}</td>
+                <td>
+                    {% if m.result == 'attacker_win' %}
+                    <span class="badge success">进攻胜</span>
+                    {% elif m.result == 'defender_win' %}
+                    <span class="badge error">防守胜</span>
+                    {% else %}
+                    {{ m.result }}
+                    {% endif %}
+                </td>
+                <td>
+                    {% if m.source == '论坛' %}
+                    <span class="badge warning">{{ m.source }}</span>
+                    {% elif m.source == '自建' %}
+                    <span class="badge success">{{ m.source }}</span>
+                    {% else %}
+                    <span class="badge error">{{ m.source }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if data.total_pages > 1 %}
+<div class="pagination">
+    {% if data.page > 1 %}
+    <a href="?page={{ data.page - 1 }}" class="btn btn-secondary">上一页</a>
+    {% endif %}
+    {% if data.page < data.total_pages %}
+    <a href="?page={{ data.page + 1 }}" class="btn btn-secondary">下一页</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- 详情/编辑弹窗 -->
+<div id="detail-modal" class="modal hidden">
+    <div class="modal-dialog modal-wide">
+        <div class="modal-header">
+            <h3 id="detail-title">对局详情</h3>
+            <div id="edit-buttons" class="hidden" style="gap:0.5rem">
+                <button id="save-btn" class="btn btn-primary" style="padding:0.3rem 0.8rem;font-size:0.85rem">保存</button>
+                <button id="close-edit-btn" class="btn btn-secondary" style="padding:0.3rem 0.8rem;font-size:0.85rem">关闭</button>
+            </div>
+        </div>
+        <div class="modal-body">
+            <div id="detail-view">
+                <div id="detail-content"></div>
+            </div>
+            <div id="edit-view" class="hidden">
+                <form id="edit-form"></form>
+            </div>
+            <div id="preview-box" class="hidden">
+                <h4 style="margin-top:1rem">变更预览</h4>
+                <div id="preview-content" class="result-box"></div>
+            </div>
+            <div id="loading" class="hidden" style="text-align:center;padding:2rem;color:var(--text-dim)">加载中...</div>
+        </div>
+    </div>
+</div>
+
+<!-- 标签管理弹窗 -->
+<div id="tag-modal" class="modal hidden">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3>管理标签</h3>
+            <button id="tag-modal-close" class="btn btn-secondary" style="padding:0.3rem 0.6rem;font-size:0.85rem">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="tag-section">
+                <h4>自定义防守标签 <button type="button" class="btn btn-primary btn-sm" onclick="addCustomDefTag()">+ 添加</button></h4>
+                <div id="custom-def-tags" class="tag-list"></div>
+            </div>
+            <div class="tag-section" style="margin-top:1.5rem">
+                <h4>上传者标签 <span class="tag-section-hint">（替换默认 dev）</span></h4>
+                <div class="tag-item">
+                    <input type="text" class="form-input tag-input" id="uploader-tag-input" placeholder="留空则为 dev"
+                        onchange="saveUploaderTag(this.value)">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast 提示 -->
+<div id="toast" class="toast hidden"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const modal = document.getElementById('detail-modal');
+const detailView = document.getElementById('detail-view');
+const editView = document.getElementById('edit-view');
+const previewBox = document.getElementById('preview-box');
+const loading = document.getElementById('loading');
+const modeToggle = document.getElementById('mode-toggle');
+
+document.querySelectorAll('.match-row').forEach(row => {
+    row.addEventListener('click', () => openDetail(row.dataset.id));
+});
+
+modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+document.getElementById('close-edit-btn').addEventListener('click', closeModal);
+
+const editButtons = document.getElementById('edit-buttons');
+
+function closeModal() { modal.classList.add('hidden'); }
+
+async function openDetail(id) {
+    loading.classList.remove('hidden');
+    detailView.classList.add('hidden');
+    editView.classList.add('hidden');
+    previewBox.classList.add('hidden');
+    modal.classList.remove('hidden');
+
+    try {
+        const res = await fetch(`/api/v1/matches/${id}`);
+        const m = await res.json();
+        document.getElementById('detail-title').textContent = `对局 ${m.id}`;
+        window._currentMatch = m;
+
+        if (modeToggle.checked) {
+            showEdit(m);
+        } else {
+            document.getElementById('detail-content').innerHTML = renderDetail(m);
+            detailView.classList.remove('hidden');
+        }
+    } catch (e) {
+        document.getElementById('detail-content').innerHTML = `<p class="error">加载失败: ${e}</p>`;
+        detailView.classList.remove('hidden');
+    }
+    loading.classList.add('hidden');
+}
+
+function renderBurst(burst) {
+    if (!burst || typeof burst !== 'object' || Object.keys(burst).length === 0) return '-';
+    return Object.entries(burst).map(([k, v]) => `${k}: ${v.join(', ')}`).join('\n');
+}
+
+function labelResult(v) {
+    return { attacker_win: '进攻胜', defender_win: '防守胜' }[v] || v;
+}
+function labelMargin(v) {
+    return { unknown: '未知', close: '胶着', decisive: '压倒' }[v] || v || '-';
+}
+function labelTrust(v) {
+    return { low: '低', medium: '中', high: '高' }[v] || v || '-';
+}
+
+function renderDetail(m) {
+    const fields = [
+        ['ID', m.id],
+        ['日期', m.date || '-'],
+        ['防守方', (m.defender_team || []).join(', ')],
+        ['进攻方', (m.attacker_team || []).join(', ')],
+        ['结果', labelResult(m.result)],
+        ['分差', labelMargin(m.margin)],
+        ['信任度', labelTrust(m.trust)],
+        ['防守爆发', renderBurst(m.defender_burst)],
+        ['进攻爆发', renderBurst(m.attacker_burst)],
+        ['自定义防守标签', m.custom_def_tag || '-'],
+        ['上传者标签', m.uploader_tag || '-'],
+        ['来源', m.source],
+        ['备注', m.notes || '-'],
+    ];
+    return '<dl style="display:grid;grid-template-columns:140px 1fr;gap:0.5rem 1rem">' +
+        fields.map(([k, v]) => `<dt style="color:var(--text-dim);font-size:0.85rem;white-space:pre-wrap">${k}</dt><dd style="margin:0;white-space:pre-wrap">${v}</dd>`).join('') +
+        '</dl>';
+}
+
+function showEdit(m) {
+    if (!m) m = window._currentMatch;
+    detailView.classList.add('hidden');
+    previewBox.classList.add('hidden');
+    editView.classList.remove('hidden');
+    editButtons.classList.remove('hidden');
+    editButtons.style.display = 'flex';
+    document.getElementById('edit-form').innerHTML = renderForm(m);
+    // 填充自定义防守标签的 datalist
+    const tags = loadTags();
+    const datalist = document.getElementById('custom-def-datalist');
+    if (datalist) {
+        datalist.innerHTML = tags.custom_def.map(t => `<option value="${escHtml(t)}">`).join('');
+    }
+}
+
+function showDetail() {
+    editView.classList.add('hidden');
+    previewBox.classList.add('hidden');
+    editButtons.classList.add('hidden');
+    editButtons.style.display = 'none';
+    detailView.classList.remove('hidden');
+}
+
+function burstToText(burst) {
+    if (!burst || typeof burst !== 'object' || Object.keys(burst).length === 0) return '';
+    return Object.entries(burst).map(([k, v]) => `${k}: ${v.join(', ')}`).join('\n');
+}
+
+function textToBurst(text) {
+    if (!text || !text.trim()) return {};
+    const result = {};
+    text.split('\n').forEach(line => {
+        const idx = line.indexOf(':');
+        if (idx === -1) return;
+        const key = line.substring(0, idx).trim();
+        const chars = line.substring(idx + 1).split(/[,，]/).map(s => s.trim()).filter(Boolean);
+        if (key && chars.length) result[key] = chars;
+    });
+    return result;
+}
+
+function renderForm(m) {
+    return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+        <label>日期<input type="date" name="date" value="${m.date || ''}" class="form-input"></label>
+        <label>来源<select name="source" class="form-input">
+            <option value="论坛" ${m.source==='论坛'?'selected':''}>论坛</option>
+            <option value="自建" ${m.source==='自建'?'selected':''}>自建</option>
+            <option value="其他" ${m.source==='其他'?'selected':''}>其他</option>
+        </select></label>
+        <label>结果<select name="result" class="form-input">
+            <option value="attacker_win" ${m.result==='attacker_win'?'selected':''}>进攻胜</option>
+            <option value="defender_win" ${m.result==='defender_win'?'selected':''}>防守胜</option>
+        </select></label>
+        <label>分差<select name="margin" class="form-input">
+            <option value="" ${!m.margin?'selected':''}>--</option>
+            <option value="unknown" ${m.margin==='unknown'?'selected':''}>未知</option>
+            <option value="close" ${m.margin==='close'?'selected':''}>胶着</option>
+            <option value="decisive" ${m.margin==='decisive'?'selected':''}>压倒</option>
+        </select></label>
+        <label>信任度<select name="trust" class="form-input">
+            <option value="" ${!m.trust?'selected':''}>--</option>
+            <option value="low" ${m.trust==='low'?'selected':''}>低</option>
+            <option value="medium" ${m.trust==='medium'?'selected':''}>中</option>
+            <option value="high" ${m.trust==='high'?'selected':''}>高</option>
+        </select></label>
+        <label>上传者标签<input type="text" name="uploader_tag" value="${m.uploader_tag || 'dev'}" class="form-input" readonly title="通过标签管理修改"></label>
+        <label>自定义防守标签<input type="text" name="custom_def_tag" value="${m.custom_def_tag || ''}" class="form-input" list="custom-def-datalist" placeholder="选择或输入"><datalist id="custom-def-datalist"></datalist></label>
+    </div>
+    <label style="display:block;margin-top:0.75rem">防守方（逗号分隔）<input type="text" name="defender_team" value="${(m.defender_team||[]).join(', ')}" class="form-input" style="width:100%"></label>
+    <label style="display:block;margin-top:0.75rem">进攻方（逗号分隔）<input type="text" name="attacker_team" value="${(m.attacker_team||[]).join(', ')}" class="form-input" style="width:100%"></label>
+    <label style="display:block;margin-top:0.75rem">防守爆发（每行一个wave，格式 B1: 角色1, 角色2）<textarea name="defender_burst" class="form-input" style="width:100%;min-height:80px;font-family:monospace">${burstToText(m.defender_burst)}</textarea></label>
+    <label style="display:block;margin-top:0.75rem">进攻爆发（格式同上）<textarea name="attacker_burst" class="form-input" style="width:100%;min-height:80px;font-family:monospace">${burstToText(m.attacker_burst)}</textarea></label>
+    <label style="display:block;margin-top:0.75rem">备注<textarea name="notes" class="form-input" style="width:100%;min-height:60px">${m.notes || ''}</textarea></label>
+    `;
+}
+
+document.getElementById('save-btn').addEventListener('click', async () => {
+    console.log('save-btn clicked');
+    const form = document.getElementById('edit-form');
+    const fd = new FormData(form);
+    const patch = {};
+    for (const [k, v] of fd.entries()) {
+        if (k === 'defender_team' || k === 'attacker_team') {
+            patch[k] = v.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+        } else if (k === 'defender_burst' || k === 'attacker_burst') {
+            const obj = textToBurst(v);
+            if (Object.keys(obj).length) patch[k] = obj;
+        } else if (k === 'notes' || k === 'custom_def_tag' || k === 'uploader_tag' || k === 'source' || k === 'date' || k === 'result') {
+            if (v) patch[k] = v;
+        } else if (k === 'margin' || k === 'trust') {
+            if (v) patch[k] = v;
+        }
+    }
+
+    console.log('Sending patch:', JSON.stringify(patch));
+    try {
+        const res = await fetch(`/api/v1/matches/${window._currentMatch.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patch),
+        });
+        if (res.ok) {
+            closeModal();
+            showToast('保存成功', 'success');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            const err = await res.text();
+            showToast('保存失败: ' + err, 'error');
+        }
+    } catch (e) {
+        showToast('保存失败: ' + e, 'error');
+    }
+});
+
+modeToggle.addEventListener('change', () => {
+    document.getElementById('tag-mgr-trigger').style.display = modeToggle.checked ? '' : 'none';
+});
+
+// ─── 标签管理（localStorage 持久化）───
+
+const TAG_STORAGE_KEY = 'match_maintain_tags';
+
+function loadTags() {
+    try {
+        const raw = JSON.parse(localStorage.getItem(TAG_STORAGE_KEY)) || {};
+        return {
+            custom_def: Array.isArray(raw.custom_def) ? raw.custom_def : [],
+            uploader: typeof raw.uploader === 'string' ? raw.uploader : 'dev',
+        };
+    } catch { return { custom_def: [], uploader: 'dev' }; }
+}
+
+function saveTags(tags) {
+    localStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(tags));
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// 打开标签管理弹窗
+function openTagManager() {
+    document.getElementById('tag-modal').classList.remove('hidden');
+    renderTagLists();
+}
+
+document.getElementById('tag-modal-close').addEventListener('click', () => {
+    document.getElementById('tag-modal').classList.add('hidden');
+});
+
+function renderTagLists() {
+    const tags = loadTags();
+    renderTagGroup('custom-def-tags', 'custom_def', tags.custom_def);
+    document.getElementById('uploader-tag-input').value = tags.uploader || 'dev';
+}
+
+function renderTagGroup(containerId, type, items) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = items.map((item, i) => `
+        <div class="tag-item">
+            <input type="text" class="form-input tag-input" value="${escHtml(item)}"
+                onchange="renameTag('${type}', ${i}, this.value)">
+            <button type="button" class="btn btn-secondary btn-sm tag-del"
+                onclick="deleteTag('${type}', ${i})">删除</button>
+        </div>
+    `).join('');
+}
+
+function saveUploaderTag(value) {
+    const tags = loadTags();
+    tags.uploader = value.trim();
+    saveTags(tags);
+}
+
+function addCustomDefTag() {
+    const tags = loadTags();
+    tags.custom_def.push('');
+    saveTags(tags);
+    renderTagLists();
+}
+
+function renameTag(type, index, newName) {
+    if (!newName.trim()) return;
+    const tags = loadTags();
+    tags[type][index] = newName.trim();
+    saveTags(tags);
+}
+
+function deleteTag(type, index) {
+    const tags = loadTags();
+    tags[type].splice(index, 1);
+    saveTags(tags);
+    renderTagLists();
+}
+
+// Toast 提示
+function showToast(msg, type = 'info') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `toast ${type} visible`;
+    setTimeout(() => { t.className = 'toast'; }, 2000);
+}
+</script>
+
+<style>
+/* 编辑模式开关 */
+.toggle-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    user-select: none;
+    white-space: nowrap;
+    flex-wrap: nowrap;
+}
+.toggle-switch input { display: none; }
+.toggle-slider {
+    width: 36px;
+    height: 18px;
+    border-radius: 4px;
+    background: var(--border);
+    position: relative;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+.toggle-slider::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background: #fff;
+    transition: transform 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider {
+    background: var(--accent);
+}
+.toggle-switch input:checked + .toggle-slider::after {
+    transform: translateX(18px);
+}
+
+/* 模态框 */
+#detail-modal {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: rgba(0,0,0,0.6) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 9999 !important;
+}
+#detail-modal.hidden { display: none !important; }
+#detail-modal .modal-dialog {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    width: 680px !important;
+    max-width: 92vw !important;
+    max-height: 85vh !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+#detail-modal .modal-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 1rem 1.25rem !important;
+    border-bottom: 1px solid var(--border) !important;
+    flex-shrink: 0 !important;
+}
+#detail-modal .modal-body {
+    padding: 0.5rem 1.25rem 1.25rem !important;
+    overflow-y: auto !important;
+}
+
+.form-input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 0.4rem 0.6rem;
+    width: 100%;
+    font-size: 0.9rem;
+}
+.form-input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+label { font-size: 0.85rem; color: var(--text-dim); display: flex; flex-direction: column; gap: 0.25rem; }
+dt { padding-top: 0.25rem; }
+dd { word-break: break-all; }
+
+/* 标签管理弹窗 */
+#tag-modal {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: rgba(0,0,0,0.6) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 10000 !important;
+}
+#tag-modal.hidden { display: none !important; }
+#tag-modal .modal-dialog {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    width: 450px !important;
+    max-width: 90vw !important;
+    max-height: 80vh !important;
+    overflow-y: auto !important;
+}
+.tag-section h4 { margin: 0 0 0.5rem; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; justify-content: space-between; }
+.tag-section-hint { font-size: 0.8rem; color: var(--text-dim); font-weight: normal; }
+.tag-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.tag-item { display: flex; gap: 0.4rem; align-items: center; }
+.tag-item .tag-input { flex: 1; padding: 0.3rem 0.5rem; font-size: 0.85rem; }
+.tag-item .tag-del { padding: 0.25rem 0.6rem; font-size: 0.8rem; flex-shrink: 0; }
+.btn-sm { padding: 0.25rem 0.6rem; font-size: 0.8rem; border-radius: 4px; cursor: pointer; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.btn-sm:hover { background: var(--border); }
+.btn-primary.btn-sm { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary.btn-sm:hover { opacity: 0.9; }
+
+/* Toast */
+.toast {
+    position: fixed;
+    top: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border: 1px solid var(--accent);
+    padding: 0.6rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    z-index: 99999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+.toast.success { border-color: #a6e3a1; color: #a6e3a1; }
+.toast.error { border-color: #f38ba8; color: #f38ba8; }
+</style>
+{% endblock %}

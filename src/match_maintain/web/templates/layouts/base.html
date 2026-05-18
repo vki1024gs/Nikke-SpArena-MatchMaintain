@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Match Maintenance{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">Match Maintenance</div>
+        <ul class="nav-links">
+            <li><a href="/" class="{% if request.url.path == '/' %}active{% endif %}">仪表盘</a></li>
+            <li><a href="/matches" class="{% if '/matches' in request.url.path %}active{% endif %}">对局</a></li>
+            <li><a href="/validate" class="{% if '/validate' in request.url.path %}active{% endif %}">验证</a></li>
+            <li><a href="/crawler" class="{% if '/crawler' in request.url.path %}active{% endif %}">爬虫</a></li>
+            <li><a href="/ocr" class="{% if '/ocr' in request.url.path %}active{% endif %}">OCR</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="/static/js/main.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

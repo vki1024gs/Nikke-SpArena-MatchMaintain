@@ -1,0 +1,90 @@
+{% extends "layouts/base.html" %}
+{% block title %}验证 - Match Maintenance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>数据验证</h1>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>快速验证</h2>
+        <button class="btn btn-primary" id="btn-quick">运行验证</button>
+    </div>
+    <p class="card-desc">检查 ID 递增、必填字段、source/trust 合法性、队伍人数、角色名</p>
+    <div id="quick-result" class="result-box hidden"></div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>深度验证</h2>
+        <button class="btn btn-primary" id="btn-deep">运行验证</button>
+    </div>
+    <p class="card-desc">检查字段顺序、类型、合法值、空值（对比模板）</p>
+    <div id="deep-result" class="result-box hidden"></div>
+    <div id="fix-section" class="hidden mt-2">
+        <button class="btn btn-warning" id="btn-fix">自动修复</button>
+        <span id="fix-result" class="ml-2"></span>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('btn-quick').addEventListener('click', async () => {
+    const box = document.getElementById('quick-result');
+    box.classList.remove('hidden');
+    box.textContent = '验证中...';
+    
+    try {
+        const res = await fetch('/api/v1/validate/quick', {method: 'POST'});
+        const data = await res.json();
+        if (data.passed) {
+            box.innerHTML = '<span class="badge success">✓ 全部通过</span>';
+        } else {
+            box.innerHTML = `<span class="badge error">✗ ${data.issues.length} 个问题</span>\n${data.issues.map(i => '  ' + i).join('\n')}`;
+        }
+    } catch (e) {
+        box.textContent = '请求失败: ' + e.message;
+    }
+});
+
+document.getElementById('btn-deep').addEventListener('click', async () => {
+    const box = document.getElementById('deep-result');
+    const fix = document.getElementById('fix-section');
+    box.classList.remove('hidden');
+    fix.classList.add('hidden');
+    box.textContent = '验证中...';
+    
+    try {
+        const res = await fetch('/api/v1/validate/deep', {method: 'POST'});
+        const data = await res.json();
+        
+        if (data.passed) {
+            box.innerHTML = '<span class="badge success">✓ 全部通过</span>';
+        } else {
+            box.innerHTML = `<span class="badge error">✗ ${data.structured_issues.length} 个问题</span>\n${data.human_report.join('\n')}`;
+            if (data.warnings?.length) {
+                box.innerHTML += `\n\n<span class="badge warning">⚠ ${data.warnings.length} 警告</span>`;
+            }
+            fix.classList.remove('hidden');
+        }
+    } catch (e) {
+        box.textContent = '请求失败: ' + e.message;
+    }
+});
+
+document.getElementById('btn-fix').addEventListener('click', async () => {
+    const result = document.getElementById('fix-result');
+    result.textContent = '修复中...';
+    
+    try {
+        const res = await fetch('/api/v1/validate/fix', {method: 'POST'});
+        const data = await res.json();
+        result.textContent = data.message + (data.backup_path ? ` (备份: ${data.backup_path})` : '');
+    } catch (e) {
+        result.textContent = '修复失败: ' + e.message;
+    }
+});
+</script>
+{% endblock %}

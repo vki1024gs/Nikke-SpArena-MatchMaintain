@@ -1,0 +1,111 @@
+{% extends "layouts/base.html" %}
+{% block title %}仪表盘 - Match Maintenance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>仪表盘</h1>
+    {% if active_file %}
+    <p class="page-subtitle">数据源: {{ data_dir }}/{{ active_file }}</p>
+    {% endif %}
+</div>
+
+<!-- 统计 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_matches | default(0) }}</div>
+        <div class="stat-label">对局总数</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.source_distribution | length | default(0) }}</div>
+        <div class="stat-label">数据来源</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.archive_count | default(0) }}</div>
+        <div class="stat-label">归档文件</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>数据来源分布</h2>
+    {% if stats.source_distribution %}
+    <table>
+        <thead>
+            <tr><th>来源</th><th>数量</th><th>占比</th></tr>
+        </thead>
+        <tbody>
+            {% for src, count in stats.source_distribution.items() %}
+            <tr>
+                <td>{{ src }}</td>
+                <td>{{ count }}</td>
+                <td>{{ "%.1f" | format(count / stats.total_matches * 100) }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">暂无数据</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>快速操作</h2>
+    <div class="action-buttons">
+        <button id="open-db-btn" class="btn btn-primary">打开数据库</button>
+        <a href="/validate" class="btn btn-secondary">运行验证</a>
+        <a href="/matches" class="btn btn-secondary">浏览对局</a>
+        <a href="/history" class="btn btn-secondary">版本历史</a>
+    </div>
+</div>
+
+<!-- 文件选择弹窗 -->
+<div id="file-modal" class="modal hidden">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3>选择数据文件</h3>
+            <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div id="file-list" class="modal-body">加载中...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('open-db-btn').addEventListener('click', async () => {
+    const modal = document.getElementById('file-modal');
+    const list = document.getElementById('file-list');
+    modal.classList.remove('hidden');
+    list.innerHTML = '加载中...';
+
+    try {
+        const res = await fetch('/api/v1/files');
+        const data = await res.json();
+        if (!data.files.length) {
+            list.innerHTML = '<p class="empty-state">没有找到 TOML 文件</p>';
+            return;
+        }
+        list.innerHTML = data.files.map(f =>
+            `<div class="file-row" onclick="selectFile('${f.name}')">
+                <span class="file-name">${f.name}</span>
+                <span class="file-meta">${(f.size / 1024).toFixed(1)} KB · ${f.modified}</span>
+            </div>`
+        ).join('');
+    } catch (e) {
+        list.innerHTML = `<p class="error">加载失败: ${e}</p>`;
+    }
+});
+
+function selectFile(name) {
+    document.cookie = `active_file=${name};max-age=2592000;path=/`;
+    location.href = `/?file=${name}`;
+}
+
+document.getElementById('modal-close').addEventListener('click', () => {
+    document.getElementById('file-modal').classList.add('hidden');
+});
+
+document.getElementById('file-modal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) e.target.classList.add('hidden');
+});
+</script>
+{% endblock %}
