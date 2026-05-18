@@ -160,11 +160,15 @@ match-maintain-web/
 │   ├── web/                # Web UI (Jinja2)
 │   ├── middleware/         # 中间件
 │   └── cli/                # CLI 命令 (Typer)
-├── sdk/                    # Python SDK
-├── data/                   # TOML 数据 + Git 仓库
-│   ├── matches.toml
-│   ├── match_schema.toml
+├── config/                 # 模板/参考数据（纳入 git 管理）
+│   ├── match_schema.toml   # 字段 schema 定义
 │   └── references/
+│       └── chara_list_pvp.toml  # 角色列表（validate 用）
+├── sdk/                    # Python SDK
+├── data/                   # 运行时数据（不纳入 git）
+│   ├── matches.toml        # 对局数据（独立 git 管理）
+│   ├── archive/            # 归档目录
+│   └── backups/            # 备份目录
 └── tests/
 ```
 
