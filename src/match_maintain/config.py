@@ -30,7 +30,15 @@ class Settings(BaseSettings):
     # 数据路径
     data_dir: Path = Path("/Users/starai/.hermes/skills/nikke-pvp/data")
     matches_file: str = ""
-    schema_file: str = "match_schema.toml"
+
+    @property
+    def matches_path(self) -> Path:
+        return self.data_dir / self.matches_file
+
+    @property
+    def schema_path(self) -> Path:
+        _project_root = Path(__file__).parent.parent.parent
+        return _project_root / "config" / "match_schema.toml"
 
     # 缓存
     cache_ttl: int = 300  # 秒
@@ -45,14 +53,6 @@ class Settings(BaseSettings):
     # Git
     git_author_name: str = "match-maintain"
     git_author_email: str = "tool@local"
-
-    @property
-    def matches_path(self) -> Path:
-        return self.data_dir / self.matches_file
-
-    @property
-    def schema_path(self) -> Path:
-        return self.data_dir / self.schema_file
 
 
 @lru_cache

@@ -21,7 +21,7 @@ build/
 *.egg-info/
 *.egg
 
-# Data directory (has its own git for TOML versioning)
+# Data directory — actual data, has its own git for versioning
 data/
 
 # Environment

@@ -60,11 +60,17 @@ class Schema:
 
 
 def _find_default_schema() -> str:
-    for root in [Path(__file__).parent.parent.parent / "data", Path(__file__).parent.parent.parent.parent / "data"]:
+    _project_root = Path(__file__).parent.parent.parent
+    # 优先从 config/ 读取（项目级模板，纳入 git 管理）
+    config_path = _project_root / "config" / "match_schema.toml"
+    if config_path.exists():
+        return str(config_path)
+    # 兼容旧路径
+    for root in [_project_root / "data", _project_root.parent / "data"]:
         p = root / "match_schema.toml"
         if p.exists():
             return str(p)
-    return "data/match_schema.toml"
+    return "config/match_schema.toml"
 
 
 def get_schema_path() -> str:

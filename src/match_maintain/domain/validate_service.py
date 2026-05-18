@@ -148,12 +148,11 @@ class ValidateService:
         )
 
     async def _load_valid_names(self) -> set[str]:
-        if self._data_dir is None:
-            return set()
-
+        # 优先从 config/ 目录加载（项目级模板），其次从 data/ 目录查找
+        config_dir = Path(__file__).parent.parent.parent.parent / "config"
         candidates = [
+            config_dir / "references" / "chara_list_pvp.toml",
             self._data_dir / "references" / "chara_list_pvp.toml",
-            self._data_dir / "chara_list_pvp.toml",
         ]
 
         for chara_path in candidates:
