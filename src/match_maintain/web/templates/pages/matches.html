@@ -4,10 +4,10 @@
 {% block content %}
 <div class="page-header">
     <h1>对局列表</h1>
-    <div style="display:flex;justify-content:space-between;align-items:center">
-        <p class="page-subtitle" style="margin:0">共 {{ data.total }} 条 · 第 {{ data.page }}/{{ data.total_pages }} 页</p>
-        <div style="display:flex;align-items:center;gap:0.75rem">
-            <button id="tag-mgr-trigger" class="btn btn-secondary" style="display:none;padding:0.3rem 0.8rem;font-size:0.85rem" onclick="openTagManager()">标签管理</button>
+    <div class="page-header-row">
+        <p class="page-subtitle">共 {{ data.total }} 条 · 第 {{ data.page }}/{{ data.total_pages }} 页</p>
+        <div class="toolbar-group">
+            <button id="tag-mgr-trigger" class="btn btn-secondary btn-sm hidden" onclick="openTagManager()">标签管理</button>
             <label class="toggle-switch">
                 <input type="checkbox" id="mode-toggle">
                 <span class="toggle-slider"></span>
@@ -17,7 +17,7 @@
     </div>
 </div>
 
-<div class="card">
+<div class="card table-card">
     <table>
         <thead>
             <tr>
@@ -30,10 +30,10 @@
         </thead>
         <tbody>
             {% for m in data.matches %}
-            <tr class="match-row" data-id="{{ m.id }}" style="cursor:pointer">
+            <tr class="match-row clickable-row" data-id="{{ m.id }}">
                 <td><code>{{ m.id }}</code></td>
-                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.defender_team | join(', ') }}</td>
-                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.attacker_team | join(', ') }}</td>
+                <td class="row-truncate">{{ m.defender_team | join(', ') }}</td>
+                <td class="row-truncate">{{ m.attacker_team | join(', ') }}</td>
                 <td>
                     {% if m.result == 'attacker_win' %}
                     <span class="badge success">进攻胜</span>
@@ -45,11 +45,11 @@
                 </td>
                 <td>
                     {% if m.source == '论坛' %}
-                    <span class="badge warning">{{ m.source }}</span>
+                    <span class="badge info">{{ m.source }}</span>
                     {% elif m.source == '自建' %}
                     <span class="badge success">{{ m.source }}</span>
                     {% else %}
-                    <span class="badge error">{{ m.source }}</span>
+                    <span class="badge neutral">{{ m.source }}</span>
                     {% endif %}
                 </td>
             </tr>
@@ -74,9 +74,9 @@
     <div class="modal-dialog modal-wide">
         <div class="modal-header">
             <h3 id="detail-title">对局详情</h3>
-            <div id="edit-buttons" class="hidden" style="gap:0.5rem">
-                <button id="save-btn" class="btn btn-primary" style="padding:0.3rem 0.8rem;font-size:0.85rem">保存</button>
-                <button id="close-edit-btn" class="btn btn-secondary" style="padding:0.3rem 0.8rem;font-size:0.85rem">关闭</button>
+            <div id="edit-buttons" class="toolbar-group hidden">
+                <button id="save-btn" class="btn btn-primary btn-sm">保存</button>
+                <button id="close-edit-btn" class="btn btn-secondary btn-sm">关闭</button>
             </div>
         </div>
         <div class="modal-body">
@@ -85,29 +85,30 @@
             </div>
             <div id="edit-view" class="hidden">
                 <form id="edit-form"></form>
+                <datalist id="custom-def-datalist"></datalist>
             </div>
             <div id="preview-box" class="hidden">
-                <h4 style="margin-top:1rem">变更预览</h4>
+                <h4 class="preview-title">变更预览</h4>
                 <div id="preview-content" class="result-box"></div>
             </div>
-            <div id="loading" class="hidden" style="text-align:center;padding:2rem;color:var(--text-dim)">加载中...</div>
+            <div id="loading" class="loading-state hidden">加载中...</div>
         </div>
     </div>
 </div>
 
 <!-- 标签管理弹窗 -->
 <div id="tag-modal" class="modal hidden">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-compact">
         <div class="modal-header">
             <h3>管理标签</h3>
-            <button id="tag-modal-close" class="btn btn-secondary" style="padding:0.3rem 0.6rem;font-size:0.85rem">✕</button>
+            <button id="tag-modal-close" class="btn btn-secondary btn-icon" aria-label="关闭">✕</button>
         </div>
         <div class="modal-body">
             <div class="tag-section">
                 <h4>自定义防守标签 <button type="button" class="btn btn-primary btn-sm" onclick="addCustomDefTag()">+ 添加</button></h4>
                 <div id="custom-def-tags" class="tag-list"></div>
             </div>
-            <div class="tag-section" style="margin-top:1.5rem">
+            <div class="tag-section tag-section-spaced">
                 <h4>上传者标签 <span class="tag-section-hint">（替换默认 dev）</span></h4>
                 <div class="tag-item">
                     <input type="text" class="form-input tag-input" id="uploader-tag-input" placeholder="留空则为 dev"
@@ -138,6 +139,28 @@ document.querySelectorAll('.match-row').forEach(row => {
 
 modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 document.getElementById('close-edit-btn').addEventListener('click', closeModal);
+
+// 自定义防守标签 datalist 交互优化：
+// 点击 input 时清空值（让浏览器显示全部选项），
+// 如果用户未选择则恢复原值（blur 时），
+// 如果选择了新值则保留。
+let _defTagBackup = null;
+document.getElementById('edit-form').addEventListener('focus', (e) => {
+    if (e.target.name === 'custom_def_tag' && e.target.value) {
+        _defTagBackup = e.target.value;
+        e.target.value = '';
+        e.target.classList.add('datalist-temp-cleared');
+    }
+}, true);
+document.getElementById('edit-form').addEventListener('blur', (e) => {
+    if (e.target.name === 'custom_def_tag' && _defTagBackup !== null && !e.target.value) {
+        e.target.value = _defTagBackup;
+    }
+    if (e.target.name === 'custom_def_tag') {
+        e.target.classList.remove('datalist-temp-cleared');
+        _defTagBackup = null;
+    }
+}, true);
 
 const editButtons = document.getElementById('edit-buttons');
 
@@ -200,9 +223,17 @@ function renderDetail(m) {
         ['来源', m.source],
         ['备注', m.notes || '-'],
     ];
-    return '<dl style="display:grid;grid-template-columns:140px 1fr;gap:0.5rem 1rem">' +
-        fields.map(([k, v]) => `<dt style="color:var(--text-dim);font-size:0.85rem;white-space:pre-wrap">${k}</dt><dd style="margin:0;white-space:pre-wrap">${v}</dd>`).join('') +
+    return '<dl class="detail-list">' +
+        fields.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('') +
         '</dl>';
+}
+
+function refreshDatalist() {
+    const tags = loadTags();
+    const datalist = document.getElementById('custom-def-datalist');
+    if (datalist) {
+        datalist.innerHTML = tags.custom_def.map(t => `<option value="${escHtml(t)}">`).join('');
+    }
 }
 
 function showEdit(m) {
@@ -213,12 +244,7 @@ function showEdit(m) {
     editButtons.classList.remove('hidden');
     editButtons.style.display = 'flex';
     document.getElementById('edit-form').innerHTML = renderForm(m);
-    // 填充自定义防守标签的 datalist
-    const tags = loadTags();
-    const datalist = document.getElementById('custom-def-datalist');
-    if (datalist) {
-        datalist.innerHTML = tags.custom_def.map(t => `<option value="${escHtml(t)}">`).join('');
-    }
+    refreshDatalist();
 }
 
 function showDetail() {
@@ -249,37 +275,37 @@ function textToBurst(text) {
 
 function renderForm(m) {
     return `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
-        <label>日期<input type="date" name="date" value="${m.date || ''}" class="form-input"></label>
-        <label>来源<select name="source" class="form-input">
+    <div class="form-grid">
+        <label class="form-label">日期<input type="date" name="date" value="${m.date || ''}" class="form-input"></label>
+        <label class="form-label"><span>来源</span><span class="select-wrapper"><select name="source" class="form-input">
             <option value="论坛" ${m.source==='论坛'?'selected':''}>论坛</option>
             <option value="自建" ${m.source==='自建'?'selected':''}>自建</option>
             <option value="其他" ${m.source==='其他'?'selected':''}>其他</option>
-        </select></label>
-        <label>结果<select name="result" class="form-input">
+        </select></span></label>
+        <label class="form-label"><span>结果</span><span class="select-wrapper"><select name="result" class="form-input">
             <option value="attacker_win" ${m.result==='attacker_win'?'selected':''}>进攻胜</option>
             <option value="defender_win" ${m.result==='defender_win'?'selected':''}>防守胜</option>
-        </select></label>
-        <label>分差<select name="margin" class="form-input">
+        </select></span></label>
+        <label class="form-label"><span>分差</span><span class="select-wrapper"><select name="margin" class="form-input">
             <option value="" ${!m.margin?'selected':''}>--</option>
             <option value="unknown" ${m.margin==='unknown'?'selected':''}>未知</option>
             <option value="close" ${m.margin==='close'?'selected':''}>胶着</option>
             <option value="decisive" ${m.margin==='decisive'?'selected':''}>压倒</option>
-        </select></label>
-        <label>信任度<select name="trust" class="form-input">
+        </select></span></label>
+        <label class="form-label"><span>信任度</span><span class="select-wrapper"><select name="trust" class="form-input">
             <option value="" ${!m.trust?'selected':''}>--</option>
             <option value="low" ${m.trust==='low'?'selected':''}>低</option>
             <option value="medium" ${m.trust==='medium'?'selected':''}>中</option>
             <option value="high" ${m.trust==='high'?'selected':''}>高</option>
-        </select></label>
-        <label>上传者标签<input type="text" name="uploader_tag" value="${m.uploader_tag || 'dev'}" class="form-input" readonly title="通过标签管理修改"></label>
-        <label>自定义防守标签<input type="text" name="custom_def_tag" value="${m.custom_def_tag || ''}" class="form-input" list="custom-def-datalist" placeholder="选择或输入"><datalist id="custom-def-datalist"></datalist></label>
+        </select></span></label>
+        <label class="form-label">上传者标签<input type="text" name="uploader_tag" value="${m.uploader_tag || 'dev'}" class="form-input" readonly title="通过标签管理修改"></label>
+        <label class="form-label">自定义防守标签<input type="text" name="custom_def_tag" value="${m.custom_def_tag || ''}" class="form-input" list="custom-def-datalist" placeholder="选择或输入"></label>
     </div>
-    <label style="display:block;margin-top:0.75rem">防守方（逗号分隔）<input type="text" name="defender_team" value="${(m.defender_team||[]).join(', ')}" class="form-input" style="width:100%"></label>
-    <label style="display:block;margin-top:0.75rem">进攻方（逗号分隔）<input type="text" name="attacker_team" value="${(m.attacker_team||[]).join(', ')}" class="form-input" style="width:100%"></label>
-    <label style="display:block;margin-top:0.75rem">防守爆发（每行一个wave，格式 B1: 角色1, 角色2）<textarea name="defender_burst" class="form-input" style="width:100%;min-height:80px;font-family:monospace">${burstToText(m.defender_burst)}</textarea></label>
-    <label style="display:block;margin-top:0.75rem">进攻爆发（格式同上）<textarea name="attacker_burst" class="form-input" style="width:100%;min-height:80px;font-family:monospace">${burstToText(m.attacker_burst)}</textarea></label>
-    <label style="display:block;margin-top:0.75rem">备注<textarea name="notes" class="form-input" style="width:100%;min-height:60px">${m.notes || ''}</textarea></label>
+    <label class="form-label form-field-full">防守方（逗号分隔）<input type="text" name="defender_team" value="${(m.defender_team||[]).join(', ')}" class="form-input"></label>
+    <label class="form-label form-field-full">进攻方（逗号分隔）<input type="text" name="attacker_team" value="${(m.attacker_team||[]).join(', ')}" class="form-input"></label>
+    <label class="form-label form-field-full">防守爆发（每行一个wave，格式 B1: 角色1, 角色2）<textarea name="defender_burst" class="form-input burst-input">${burstToText(m.defender_burst)}</textarea></label>
+    <label class="form-label form-field-full">进攻爆发（格式同上）<textarea name="attacker_burst" class="form-input burst-input">${burstToText(m.attacker_burst)}</textarea></label>
+    <label class="form-label form-field-full">备注<textarea name="notes" class="form-input notes-input">${m.notes || ''}</textarea></label>
     `;
 }
 
@@ -294,7 +320,9 @@ document.getElementById('save-btn').addEventListener('click', async () => {
         } else if (k === 'defender_burst' || k === 'attacker_burst') {
             const obj = textToBurst(v);
             if (Object.keys(obj).length) patch[k] = obj;
-        } else if (k === 'notes' || k === 'custom_def_tag' || k === 'uploader_tag' || k === 'source' || k === 'date' || k === 'result') {
+        } else if (k === 'notes' || k === 'custom_def_tag' || k === 'uploader_tag') {
+            patch[k] = v;
+        } else if (k === 'source' || k === 'date' || k === 'result') {
             if (v) patch[k] = v;
         } else if (k === 'margin' || k === 'trust') {
             if (v) patch[k] = v;
@@ -309,9 +337,10 @@ document.getElementById('save-btn').addEventListener('click', async () => {
             body: JSON.stringify(patch),
         });
         if (res.ok) {
-            closeModal();
+            const updated = await res.json();
+            window._currentMatch = updated;
+            showEdit(updated);
             showToast('保存成功', 'success');
-            setTimeout(() => location.reload(), 800);
         } else {
             const err = await res.text();
             showToast('保存失败: ' + err, 'error');
@@ -322,7 +351,7 @@ document.getElementById('save-btn').addEventListener('click', async () => {
 });
 
 modeToggle.addEventListener('change', () => {
-    document.getElementById('tag-mgr-trigger').style.display = modeToggle.checked ? '' : 'none';
+    document.getElementById('tag-mgr-trigger').classList.toggle('hidden', !modeToggle.checked);
 });
 
 // ─── 标签管理（localStorage 持久化）───
@@ -386,6 +415,7 @@ function addCustomDefTag() {
     tags.custom_def.push('');
     saveTags(tags);
     renderTagLists();
+    refreshDatalist();
 }
 
 function renameTag(type, index, newName) {
@@ -393,6 +423,7 @@ function renameTag(type, index, newName) {
     const tags = loadTags();
     tags[type][index] = newName.trim();
     saveTags(tags);
+    refreshDatalist();
 }
 
 function deleteTag(type, index) {
@@ -400,6 +431,7 @@ function deleteTag(type, index) {
     tags[type].splice(index, 1);
     saveTags(tags);
     renderTagLists();
+    refreshDatalist();
 }
 
 // Toast 提示
@@ -409,159 +441,22 @@ function showToast(msg, type = 'info') {
     t.className = `toast ${type} visible`;
     setTimeout(() => { t.className = 'toast'; }, 2000);
 }
+refreshDatalist();
 </script>
 
 <style>
-/* 编辑模式开关 */
-.toggle-switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-    font-size: 0.85rem;
-    color: var(--text-dim);
-    user-select: none;
-    white-space: nowrap;
-    flex-wrap: nowrap;
-}
-.toggle-switch input { display: none; }
-.toggle-slider {
-    width: 36px;
-    height: 18px;
-    border-radius: 4px;
-    background: var(--border);
-    position: relative;
-    transition: background 0.2s;
-    flex-shrink: 0;
-}
-.toggle-slider::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 14px;
-    height: 14px;
-    border-radius: 3px;
-    background: #fff;
-    transition: transform 0.2s;
-}
-.toggle-switch input:checked + .toggle-slider {
-    background: var(--accent);
-}
-.toggle-switch input:checked + .toggle-slider::after {
-    transform: translateX(18px);
-}
-
-/* 模态框 */
-#detail-modal {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    background: rgba(0,0,0,0.6) !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    z-index: 9999 !important;
-}
-#detail-modal.hidden { display: none !important; }
-#detail-modal .modal-dialog {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius) !important;
-    width: 680px !important;
-    max-width: 92vw !important;
-    max-height: 85vh !important;
-    overflow: hidden !important;
-    display: flex !important;
-    flex-direction: column !important;
-}
-#detail-modal .modal-header {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    padding: 1rem 1.25rem !important;
-    border-bottom: 1px solid var(--border) !important;
-    flex-shrink: 0 !important;
-}
-#detail-modal .modal-body {
-    padding: 0.5rem 1.25rem 1.25rem !important;
-    overflow-y: auto !important;
-}
-
-.form-input {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    color: var(--text);
-    padding: 0.4rem 0.6rem;
-    width: 100%;
-    font-size: 0.9rem;
-}
-.form-input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
-label { font-size: 0.85rem; color: var(--text-dim); display: flex; flex-direction: column; gap: 0.25rem; }
+.loading-state { text-align: center; padding: 2rem; color: var(--text-dim); }
+.burst-input { min-height: 80px; font-family: 'SF Mono', Monaco, monospace; }
+.notes-input { min-height: 60px; }
 dt { padding-top: 0.25rem; }
 dd { word-break: break-all; }
 
-/* 标签管理弹窗 */
-#tag-modal {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    background: rgba(0,0,0,0.6) !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    z-index: 10000 !important;
-}
-#tag-modal.hidden { display: none !important; }
-#tag-modal .modal-dialog {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius) !important;
-    width: 450px !important;
-    max-width: 90vw !important;
-    max-height: 80vh !important;
-    overflow-y: auto !important;
-}
 .tag-section h4 { margin: 0 0 0.5rem; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; justify-content: space-between; }
+.tag-section-spaced { margin-top: 1.5rem; }
 .tag-section-hint { font-size: 0.8rem; color: var(--text-dim); font-weight: normal; }
 .tag-list { display: flex; flex-direction: column; gap: 0.4rem; }
 .tag-item { display: flex; gap: 0.4rem; align-items: center; }
 .tag-item .tag-input { flex: 1; padding: 0.3rem 0.5rem; font-size: 0.85rem; }
 .tag-item .tag-del { padding: 0.25rem 0.6rem; font-size: 0.8rem; flex-shrink: 0; }
-.btn-sm { padding: 0.25rem 0.6rem; font-size: 0.8rem; border-radius: 4px; cursor: pointer; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
-.btn-sm:hover { background: var(--border); }
-.btn-primary.btn-sm { background: var(--accent); color: #fff; border-color: var(--accent); }
-.btn-primary.btn-sm:hover { opacity: 0.9; }
-
-/* Toast */
-.toast {
-    position: fixed;
-    top: 1.5rem;
-    left: 50%;
-    transform: translateX(-50%) translateY(-8px);
-    background: #1e1e2e;
-    color: #cdd6f4;
-    border: 1px solid var(--accent);
-    padding: 0.6rem 1.5rem;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    z-index: 99999;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.25s, transform 0.25s;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-}
-.toast.visible {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-    pointer-events: auto;
-}
-.toast.success { border-color: #a6e3a1; color: #a6e3a1; }
-.toast.error { border-color: #f38ba8; color: #f38ba8; }
 </style>
 {% endblock %}
